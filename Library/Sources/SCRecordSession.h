@@ -167,6 +167,8 @@ extern const NSString *SCRecordSessionDateKey;
  */
 @property (assign, nonatomic) CMTimeScale videoMaxFrameRate;
 
+@property (assign, nonatomic) BOOL shouldDropFrames;
+
 /**
  The time scale of the video
  A value different than 1 with the sound enabled will probably fail.

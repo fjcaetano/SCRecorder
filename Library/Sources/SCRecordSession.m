@@ -658,12 +658,29 @@ const NSString *SCRecordSessionDateKey = @"Date";
         
         if (_videoTimeScale != 1.0) {
             computedFrameDuration = CMTimeMultiplyByFloat64(computedFrameDuration, _videoTimeScale);
-            _timeOffset = CMTimeAdd(_timeOffset, CMTimeSubtract(duration, computedFrameDuration));
+            
+            if (_shouldDropFrames) {
+                _timeOffset = CMTimeAdd(_timeOffset, CMTimeSubtract(duration, computedFrameDuration));
+            }
         }
         
 //            NSLog(@"%f - Appended video %f (%f)", CMTimeGetSeconds(lastTimeVideo), CMTimeGetSeconds(computedFrameDuration), CMTimeGetSeconds(CMTimeSubtract(lastTimeVideo, _lastTimeVideo)));
         
-        lastTimeVideo = CMTimeAdd(lastTimeVideo, computedFrameDuration);
+        
+        if (!_shouldDropFrames && _videoMaxFrameRate != 0) {
+            CMTime interval = CMTimeMake(1, _videoMaxFrameRate);
+            
+            CMTime offset = CMTimeSubtract(lastTimeVideo, _lastTimeVideo);
+//            if (CMTIME_COMPARE_INLINE(_lastAppendedVideo, ==, kCMTimeZero)) {
+//                offset = CMTimeSubtract(actualBufferTime, _sessionBegan);
+//            }
+            
+            if  (CMTIME_COMPARE_INLINE(offset, <, interval) && CMTIME_COMPARE_INLINE(_lastTimeVideo, !=, kCMTimeZero)) {
+                return NO;
+            }
+        } else {
+            lastTimeVideo = CMTimeAdd(lastTimeVideo, computedFrameDuration);
+        }
         
         _lastTimeVideo = lastTimeVideo;
         _lastTime = lastTimeVideo;
