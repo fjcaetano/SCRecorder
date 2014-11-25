@@ -683,14 +683,11 @@
 }
 
 - (void)switchCaptureDevices {
-    CFTimeInterval startTime = CACurrentMediaTime();
     if (self.device == AVCaptureDevicePositionBack) {
         self.device = AVCaptureDevicePositionFront;
     } else {
         self.device = AVCaptureDevicePositionBack;
     }
-    CFTimeInterval elapsedTime = CACurrentMediaTime() - startTime;
-    NSLog(@"commit time: %fs\tthread: %@", elapsedTime, [NSThread currentThread]);
 }
 
 - (void)previewViewFrameChanged {
