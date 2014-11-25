@@ -155,7 +155,7 @@
     if (_captureSession != nil) {
         _beginSessionConfigurationCount--;
         if (_beginSessionConfigurationCount == 0) {
-            [_captureSession commitConfiguration];
+            [self.captureSession commitConfiguration];
         }
     }
 }
@@ -683,11 +683,14 @@
 }
 
 - (void)switchCaptureDevices {
+    CFTimeInterval startTime = CACurrentMediaTime();
     if (self.device == AVCaptureDevicePositionBack) {
         self.device = AVCaptureDevicePositionFront;
     } else {
         self.device = AVCaptureDevicePositionBack;
     }
+    CFTimeInterval elapsedTime = CACurrentMediaTime() - startTime;
+    NSLog(@"commit time: %fs\tthread: %@", elapsedTime, [NSThread currentThread]);
 }
 
 - (void)previewViewFrameChanged {
@@ -955,7 +958,31 @@
 - (void)setDevice:(AVCaptureDevicePosition)device {
     _device = device;
     if (_captureSession != nil) {
-        [self reconfigureVideoInput:self.videoConfiguration.enabled audioInput:NO];
+        
+        [self beginSessionConfiguration];
+        NSError *error = nil;
+        AVCaptureDeviceInput *currentInput = [self currentDeviceInputForMediaType:AVMediaTypeVideo];
+        AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:[self videoDevice] error:&error];
+        
+        if (error == nil) {
+            [_captureSession removeInput:currentInput];
+            if ([_captureSession canAddInput:newInput]) {
+                [_captureSession addInput:newInput];
+            } else {
+                [_captureSession addInput:currentInput];
+                error = [SCRecorder createError:@"Failed to add input to capture session"];
+            }
+        }
+        
+        dispatch_sync(_recordSessionQueue, ^{
+            [self updateVideoOrientation];
+        });
+        [self commitSessionConfiguration];
+        
+        id<SCRecorderDelegate> delegate = self.delegate;
+        if ([delegate respondsToSelector:@selector(recorder:didReconfigureVideoInput:)]) {
+            [delegate recorder:self didReconfigureVideoInput:error];
+        }
     }
 }
 
