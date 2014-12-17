@@ -417,6 +417,16 @@
     }
 }
 
+- (CMTime)frameDurationFromConnection:(AVCaptureConnection *)connection {
+    AVCaptureDevice *device = [self currentVideoDeviceInput].device;
+    
+    if ([device respondsToSelector:@selector(activeVideoMaxFrameDuration)]) {
+        return device.activeVideoMinFrameDuration;
+    }
+    
+    return connection.videoMinFrameDuration;
+}
+
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     if (captureOutput == _videoOutput) {
         _lastVideoBuffer.sampleBuffer = sampleBuffer;
@@ -449,7 +459,7 @@
         if (!(_initializeRecordSessionLazily && !_isRecording) && recordSession != nil) {
             if (recordSession != nil) {
                 if (captureOutput == _videoOutput) {
-                    if (!recordSession.videoInitializationFailed) {
+                    if (!recordSession.videoInitializationFailed && !_videoConfiguration.shouldIgnore) {
                         if (!recordSession.videoInitialized) {
                             NSError *error = nil;
                             NSDictionary *settings = [self.videoConfiguration createAssetWriterOptionsUsingSampleBuffer:sampleBuffer];
@@ -468,7 +478,7 @@
                             
                             if (_isRecording && recordSession.recordSegmentReady) {
                                 id<SCRecorderDelegate> delegate = self.delegate;
-                                if ([recordSession appendVideoSampleBuffer:sampleBuffer]) {
+                                if ([recordSession appendVideoSampleBuffer:sampleBuffer duration:[self frameDurationFromConnection:connection]]) {
                                     _lastAppendedVideoBuffer.sampleBuffer = sampleBuffer;
                                     
                                     if ([delegate respondsToSelector:@selector(recorder:didAppendVideoSampleBuffer:)]) {
@@ -490,7 +500,7 @@
                         }
                     }
                 } else if (captureOutput == _audioOutput) {
-                    if (!recordSession.audioInitializationFailed) {
+                    if (!recordSession.audioInitializationFailed && !_audioConfiguration.shouldIgnore) {
                         if (!recordSession.audioInitialized) {
                             NSError *error = nil;
                             NSDictionary *settings = [self.audioConfiguration createAssetWriterOptionsUsingSampleBuffer:sampleBuffer];
@@ -651,33 +661,35 @@
 }
 
 - (void)reconfigureVideoInput:(BOOL)shouldConfigureVideo audioInput:(BOOL)shouldConfigureAudio {
-    [self beginSessionConfiguration];
-    
-    NSError *videoError = nil;
-    if (shouldConfigureVideo) {
-        [self configureDevice:[self videoDevice] mediaType:AVMediaTypeVideo error:&videoError];
-        dispatch_sync(_recordSessionQueue, ^{
-            [self updateVideoOrientation];
-        });
-    }
-    
-    NSError *audioError = nil;
-    
-    if (shouldConfigureAudio) {
-        [self configureDevice:[self audioDevice] mediaType:AVMediaTypeAudio error:&audioError];
-    }
-    
-    [self commitSessionConfiguration];
-    
-    id<SCRecorderDelegate> delegate = self.delegate;
-    if (shouldConfigureAudio) {
-        if ([delegate respondsToSelector:@selector(recorder:didReconfigureAudioInput:)]) {
-            [delegate recorder:self didReconfigureAudioInput:audioError];
+    if (_captureSession != nil) {
+        [self beginSessionConfiguration];
+        
+        NSError *videoError = nil;
+        if (shouldConfigureVideo) {
+            [self configureDevice:[self videoDevice] mediaType:AVMediaTypeVideo error:&videoError];
+            dispatch_sync(_recordSessionQueue, ^{
+                [self updateVideoOrientation];
+            });
         }
-    }
-    if (shouldConfigureVideo) {
-        if ([delegate respondsToSelector:@selector(recorder:didReconfigureVideoInput:)]) {
-            [delegate recorder:self didReconfigureVideoInput:videoError];
+        
+        NSError *audioError = nil;
+        
+        if (shouldConfigureAudio) {
+            [self configureDevice:[self audioDevice] mediaType:AVMediaTypeAudio error:&audioError];
+        }
+        
+        [self commitSessionConfiguration];
+        
+        id<SCRecorderDelegate> delegate = self.delegate;
+        if (shouldConfigureAudio) {
+            if ([delegate respondsToSelector:@selector(recorder:didReconfigureAudioInput:)]) {
+                [delegate recorder:self didReconfigureAudioInput:audioError];
+            }
+        }
+        if (shouldConfigureVideo) {
+            if ([delegate respondsToSelector:@selector(recorder:didReconfigureVideoInput:)]) {
+                [delegate recorder:self didReconfigureVideoInput:videoError];
+            }
         }
     }
 }

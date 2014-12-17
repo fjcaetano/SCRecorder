@@ -109,11 +109,32 @@
         [self.recordSession mergeRecordSegmentsUsingPreset:AVAssetExportPresetHighestQuality completionHandler:completionHandler];
     } else {
         SCAssetExportSession *exportSession = [[SCAssetExportSession alloc] initWithAsset:self.recordSession.assetRepresentingRecordSegments];
-        exportSession.filterGroup = currentFilter;
-        exportSession.sessionPreset = SCAssetExportSessionPresetHighestQuality;
+        exportSession.videoConfiguration.filterGroup = currentFilter;
+        exportSession.videoConfiguration.preset = SCPresetHighestQuality;
+        exportSession.audioConfiguration.preset = SCPresetHighestQuality;
+        exportSession.videoConfiguration.maxFrameRate = 35;
         exportSession.outputUrl = self.recordSession.outputUrl;
         exportSession.outputFileType = AVFileTypeMPEG4;
-        exportSession.keepVideoSize = YES;
+        
+        // Adding our "fancy" watermark
+        UILabel *label = [UILabel new];
+        label.textColor = [UIColor whiteColor];
+        label.font = [UIFont boldSystemFontOfSize:40];
+        label.text = @"SCRecorder ©";
+        [label sizeToFit];
+        
+        UIGraphicsBeginImageContext(label.frame.size);
+        
+        [label.layer renderInContext:UIGraphicsGetCurrentContext()];
+        
+        UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+        
+        UIGraphicsEndImageContext();
+        
+        exportSession.videoConfiguration.watermarkImage = image;
+        exportSession.videoConfiguration.watermarkFrame = CGRectMake(10, 10, label.frame.size.width, label.frame.size.height);
+        exportSession.videoConfiguration.watermarkAnchorLocation = SCWatermarkAnchorLocationBottomRight;
+        
         [exportSession exportAsynchronouslyWithCompletionHandler:^{
             completionHandler(exportSession.outputUrl, exportSession.error);
         }];

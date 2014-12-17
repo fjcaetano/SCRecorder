@@ -47,6 +47,9 @@ namespace SCorsin {
 		[Export("bitrate")]
 		ulong Bitrate { get; set; }
 
+		[Export("preset")]
+		NSString Preset { get; set; }
+
 	}
 
 	[BaseType(typeof(SCMediaTypeConfiguration))]
@@ -76,8 +79,23 @@ namespace SCorsin {
 		[Export("shouldKeepOnlyKeyFrames")]
 		bool ShouldKeepOnlyKeyFrames { get; set; }
 
+		[Export("keepInputAffineTransform")]
+		bool KeepInputAffineTransform { get; set; }
+
 		[Export("filterGroup")]
 		SCFilterGroup FilterGroup { get; set; }
+
+		[Export("composition")]
+		AVVideoComposition Composition { get; set; }
+
+		[Export("watermarkImage")]
+		UIImage WatermarkImage { get; set; }
+
+		[Export("watermarkFrame")]
+		RectangleF WatermarkFrame { get; set; }
+
+		[Export("watermarkAnchorLocation")]
+		int WatermarkAnchorLocation { get; set; }
 
 	}
 
@@ -85,13 +103,16 @@ namespace SCorsin {
 	interface SCAudioConfiguration {
 
 		[Export("sampleRate")]
-		double SampleRate { get; set; } 
+		int SampleRate { get; set; } 
 
 		[Export("channelsCount")]
 		int ChannelsCount { get; set; }
 
 		[Export("format")]
 		int Format { get; set; }
+
+		[Export("audioMix")]
+		AVAudioMix AudioMix { get; set; }
 	}
 
 	public delegate void EndRecordSegmentDelegate(int segmentIndex, NSError errore);
@@ -548,11 +569,11 @@ namespace SCorsin {
 		[Export("outputFileType")]
 		NSString OutputFileType { get; set; }
 
-		[Export("videoSettings")]
-		NSDictionary VideoSettings { get; set; }
+		[Export("videoConfiguration")]
+		SCVideoConfiguration VideoConfiguration { get;}
 
-		[Export("audioSettings")]
-		NSDictionary AudioSettings { get; set; }
+		[Export("audioConfiguration")]
+		SCAudioConfiguration AudioConfiguration { get; }
 
 		[Export("error")]
 		NSError Error { get; }
@@ -563,23 +584,8 @@ namespace SCorsin {
 		[Export("exportAsynchronouslyWithCompletionHandler:")]
 		void ExportAsynchronously(Action completionHandler);
 
-		[Export("filterGroup"), NullAllowed]
-		SCFilterGroup FilterGroup { get; set; }
-
 		[Export("useGPUForRenderingFilters")]
 		bool UseGPUForRenderingFilters { get; set; }
-
-		[Export("videoTransform")]
-		CGAffineTransform VideoTransform { get; set; }
-
-		[Export("ignoreVideo")]
-		bool IgnoreVideo { get; set; }
-
-		[Export("ignoreAudio")]
-		bool IgnoreAudio { get; set; }
-
-		[Export("maxVideoFrameDuration")]
-		CMTime MaxVideoFrameDuration { get; set; }
 	}
 
 	[BaseType(typeof(UIView))]

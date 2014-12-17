@@ -14,6 +14,13 @@
 #define kSCVideoConfigurationDefaultScalingMode AVVideoScalingModeResizeAspectFill
 #define kSCVideoConfigurationDefaultBitrate 2000000
 
+typedef enum : NSUInteger {
+    SCWatermarkAnchorLocationTopLeft,
+    SCWatermarkAnchorLocationTopRight,
+    SCWatermarkAnchorLocationBottomLeft,
+    SCWatermarkAnchorLocationBottomRight
+} SCWatermarkAnchorLocation;
+
 @interface SCVideoConfiguration : SCMediaTypeConfiguration
 
 /**
@@ -55,6 +62,8 @@
  A value more than 1 will make the buffers last longer, it creates
  a slow motion effect. A value less than 1 will make the buffers be
  shorter, it creates a timelapse effect.
+ 
+ Only used in SCRecorder.
  */
 @property (assign, nonatomic) CGFloat timeScale;
 
@@ -86,5 +95,53 @@
  an empty SCFilterGroup instead of setting this property to nil.
  */
 @property (strong, nonatomic) SCFilterGroup *filterGroup;
+
+/**
+ If YES, the affineTransform will be ignored and the output affineTransform
+ will be the same as the input asset.
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (assign, nonatomic) BOOL keepInputAffineTransform;
+
+/**
+ The video composition to use.
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (strong, nonatomic) AVVideoComposition *composition;
+
+/**
+ The watermark to use. If the composition is not set, this watermark
+ image will be applied on the exported video.
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (strong, nonatomic) UIImage *watermarkImage;
+
+/**
+ The watermark image location and size.
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (assign, nonatomic) CGRect watermarkFrame;
+
+/**
+ Set a specific key to the video profile
+ */
+@property (assign, nonatomic) NSString *profileLevel;
+
+/**
+ The watermark anchor location.
+ 
+ Default is top left
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (assign, nonatomic) SCWatermarkAnchorLocation watermarkAnchorLocation;
+
+
+
+- (NSDictionary *)createAssetWriterOptionsWithVideoSize:(CGSize)videoSize;
 
 @end

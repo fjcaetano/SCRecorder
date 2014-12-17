@@ -91,7 +91,6 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
         _videoInitializationFailed = NO;
         _currentSegmentCount = 0;
         _timeOffset = kCMTimeZero;
-        _lastTimeVideo = kCMTimeZero;
         _lastTimeAudio = kCMTimeZero;
         _lastAppendedVideo = kCMTimeZero;
         _currentSegmentDuration = kCMTimeZero;
@@ -452,7 +451,6 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
     _currentSegmentHasAudio = NO;
     _currentSegmentHasVideo = NO;
     _assetWriter = nil;
-    _lastTimeVideo = kCMTimeInvalid;
     _lastTimeAudio = kCMTimeInvalid;
     _currentSegmentDuration = kCMTimeZero;
 }
@@ -545,17 +543,6 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
                     completionHandler(nil, [SCRecordSession createError:@"The session does not contains any record segment"]);
                 });
             }
-        } else if (_recordSegments.count == 1) {
-            // If we only have one segment, we can just copy that file to the destination
-            NSURL *fileUrl = [_recordSegments objectAtIndex:0];
-            NSError *error = nil;
-            [[NSFileManager defaultManager] copyItemAtURL:fileUrl toURL:outputUrl error:&error];
-            
-            if (completionHandler != nil) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completionHandler(outputUrl, error);
-                });
-            }
         } else {
             AVAsset *asset = [self assetRepresentingRecordSegments];
             
@@ -646,7 +633,7 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
     }
 }
 
-- (BOOL)appendVideoSampleBuffer:(CMSampleBufferRef)videoSampleBuffer {
+- (BOOL)appendVideoSampleBuffer:(CMSampleBufferRef)videoSampleBuffer duration:(CMTime)duration {
     if ([_videoInput isReadyForMoreMediaData]) {
         CMTime actualBufferTime = CMSampleBufferGetPresentationTimeStamp(videoSampleBuffer);
         
@@ -673,15 +660,9 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
         } else {
             CGFloat videoTimeScale = _videoConfiguration.timeScale;
             if (videoTimeScale != 1.0) {
-                if (CMTIME_IS_VALID(_lastTimeVideo)) {
-                    CMTime bufferDuration = CMTimeSubtract(actualBufferTime, _lastTimeVideo);
-                    
-                    CMTime computedFrameDuration = CMTimeMultiplyByFloat64(bufferDuration, videoTimeScale);
-                    _timeOffset = CMTimeAdd(_timeOffset, CMTimeSubtract(bufferDuration, computedFrameDuration));
-//                    NSLog(@"%fs (computed: %fs), new time offset: %fs", CMTimeGetSeconds(bufferDuration), CMTimeGetSeconds(computedFrameDuration), CMTimeGetSeconds(_timeOffset));
-                } else {
-                    NSLog(@"Unable to compute new buffer ");
-                }
+                CMTime computedFrameDuration = CMTimeMultiplyByFloat64(duration, videoTimeScale);
+                _timeOffset = CMTimeAdd(_timeOffset, CMTimeSubtract(duration, computedFrameDuration));
+                duration = computedFrameDuration;
             }
         }
         
@@ -714,10 +695,9 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
             
             CFRelease(adjustedBuffer);
         }
-   
+
         _lastAppendedVideo = actualBufferTime;
-        _lastTimeVideo = actualBufferTime;
-        _currentSegmentDuration = bufferTimestamp;
+        _currentSegmentDuration = CMTimeAdd(bufferTimestamp, duration);
         
         _currentSegmentHasVideo = YES;
         
@@ -727,6 +707,34 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
     }
 }
 
+- (CMTime)_appendTrack:(AVAssetTrack *)track toCompositionTrack:(AVMutableCompositionTrack *)compositionTrack atTime:(CMTime)time withBounds:(CMTime)bounds {
+    CMTimeRange timeRange = track.timeRange;
+    time = CMTimeAdd(time, timeRange.start);
+    
+    if (CMTIME_IS_VALID(bounds)) {
+        CMTime currentBounds = CMTimeAdd(time, timeRange.duration);
+
+        if (CMTIME_COMPARE_INLINE(currentBounds, >, bounds)) {
+            timeRange = CMTimeRangeMake(timeRange.start, CMTimeSubtract(timeRange.duration, CMTimeSubtract(currentBounds, bounds)));
+        }
+    }
+    
+    if (CMTIME_COMPARE_INLINE(timeRange.duration, >, kCMTimeZero)) {
+        NSError *error = nil;
+        [compositionTrack insertTimeRange:timeRange ofTrack:track atTime:time error:&error];
+        
+        if (error != nil) {
+            NSLog(@"Failed to insert append %@ track: %@", compositionTrack.mediaType, error);
+        } else {
+            //        NSLog(@"Inserted %@ at %fs (%fs -> %fs)", track.mediaType, CMTimeGetSeconds(time), CMTimeGetSeconds(timeRange.start), CMTimeGetSeconds(timeRange.duration));
+        }
+        
+        return CMTimeAdd(time, timeRange.duration);
+    }
+    
+    return time;
+}
+
 - (AVAsset *)assetRepresentingRecordSegments {
     __block AVAsset *asset = nil;
     [self _dispatchSynchronouslyOnSafeQueue:^{
@@ -734,19 +742,40 @@ NSString *SCRecordSessionCacheDirectory = @"CacheDirectory";
             asset = [AVAsset assetWithURL:_recordSegments.firstObject];
         } else {
             AVMutableComposition *composition = [AVMutableComposition composition];
+            AVMutableCompositionTrack *audioTrack = nil;
+            AVMutableCompositionTrack *videoTrack = nil;
             
-            NSDictionary *options = @{AVURLAssetPreferPreciseDurationAndTimingKey : @YES};
+            NSDictionary *options = @{ AVURLAssetPreferPreciseDurationAndTimingKey : @YES };
             int currentSegment = 0;
+            CMTime currentTime = kCMTimeZero;
             for (NSURL *recordSegment in _recordSegments) {
                 AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:recordSegment options:options];
-                CMTime currentTime = composition.duration;
                 
-                NSError *error = nil;
-                [composition insertTimeRange:CMTimeRangeMake(kCMTimeZero, asset.duration) ofAsset:asset atTime:currentTime error:&error];
+                NSArray *audioAssetTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+                NSArray *videoAssetTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
                 
-                if (error != nil) {
-                    NSLog(@"Failed to insert recordSegment at %@: %@", recordSegment, error);
+                CMTime maxBounds = kCMTimeInvalid;
+                
+                CMTime videoTime = currentTime;
+                for (AVAssetTrack *videoAssetTrack in videoAssetTracks) {
+                    if (videoTrack == nil) {
+                        videoTrack = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+                    }
+                    
+                    videoTime = [self _appendTrack:videoAssetTrack toCompositionTrack:videoTrack atTime:videoTime withBounds:maxBounds];
+                    maxBounds = videoTime;
                 }
+                
+                CMTime audioTime = currentTime;
+                for (AVAssetTrack *audioAssetTrack in audioAssetTracks) {
+                    if (audioTrack == nil) {
+                        audioTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
+                    }
+              
+                    audioTime = [self _appendTrack:audioAssetTrack toCompositionTrack:audioTrack atTime:audioTime withBounds:maxBounds];
+                }
+                
+                currentTime = composition.duration;
                 
                 currentSegment++;
             }

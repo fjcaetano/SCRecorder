@@ -21,7 +21,6 @@
     BOOL _currentSegmentHasAudio;
     int _currentSegmentCount;
     CMTime _timeOffset;
-    CMTime _lastTimeVideo;
     CMTime _lastTimeAudio;
     CMTime _lastAppendedVideo;
     CMTime _sessionBegan;
@@ -49,7 +48,7 @@
 
 - (void)uninitialize;
 
-- (BOOL)appendVideoSampleBuffer:(CMSampleBufferRef)videoSampleBuffer;
+- (BOOL)appendVideoSampleBuffer:(CMSampleBufferRef)videoSampleBuffer duration:(CMTime)duration;
 - (BOOL)appendAudioSampleBuffer:(CMSampleBufferRef)audioSampleBuffer;
 
 @end

@@ -10,6 +10,8 @@
 #import "SCMediaTypeConfiguration.h"
 
 #define kSCAudioConfigurationDefaultBitrate 128000
+#define kSCAudioConfigurationDefaultNumberOfChannels 2
+#define kSCAudioConfigurationDefaultSampleRate 44100
 #define kSCAudioConfigurationDefaultAudioFormat kAudioFormatMPEG4AAC
 
 @interface SCAudioConfiguration : SCMediaTypeConfiguration
@@ -19,7 +21,7 @@
  If set to 0, the original sample rate will be used.
  If options has been changed, this property will be ignored
  */
-@property (assign, nonatomic) Float64 sampleRate;
+@property (assign, nonatomic) int sampleRate;
 
 /**
  Set the number of channels
@@ -33,5 +35,12 @@
  If options is not nil, this property will be ignored
  */
 @property (assign, nonatomic) int format;
+
+/**
+ The audioMix to apply.
+ 
+ Only used in SCAssetExportSession.
+ */
+@property (strong, nonatomic) AVAudioMix *audioMix;
 
 @end
